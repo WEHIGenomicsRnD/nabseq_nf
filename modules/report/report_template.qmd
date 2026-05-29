@@ -46,6 +46,7 @@ library(vroom)
 library(dplyr)
 library(htmltools)
 library(stringr)
+library(tidyverse)
 library(Biostrings)
 
 versions <- vroom("versions.yml", col_names = c("tool", "version"))
@@ -206,6 +207,36 @@ render_child <- function(file, i) {
 #| echo: false
 purrr::iwalk(all_annotations, render_child)
 ```
+
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# get all of the sequences
+align_sequence <- as.vector(fs::dir_ls(glob = "*_align_annotation.tsv"))
+
+render_child <- function(file_path) {
+  file_str <- as.character(file_path)
+  name_str <- stringr::str_remove(basename(file_str), "_align_annotation.tsv")
+
+  res = knitr::knit_child(
+   text = xfun::read_utf8("_align_template.qmd"),
+   envir = rlang::env(TARGET_FILE_PATH = file_str, TARGET_NAME = name_str),
+   quiet = TRUE
+  )
+  cat(res, sep = '\n')
+}
+```
+
+```{r}
+#| results: "asis"
+#| echo: false
+purrr::walk(align_sequence, render_child)
+```
+
+
 
 ## **Method summary**
 

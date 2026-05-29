@@ -200,6 +200,7 @@ workflow{
     // i think it might confuse end users to give the unproductive sequences too?
     productive_only_annotation = annotation_grouping_post_consensus.out.annotated_sequences
     flag_data = annotation_grouping_post_consensus.out.flag_data
+    align_annotation = annotation_grouping_post_consensus.out.align_annotation 
 
     // need to reformat this to combine with the nanocomp stuff
     // basically, get the metadata out of this structure: [[meta1, meta2, meta3], path]
@@ -211,12 +212,25 @@ workflow{
         .groupTuple(by: 0)
         .set{annotation_ordered_for_report}
 
+    annotation_ordered_for_report.view()
+
     flag_data
         .map{ it -> [it[0][2]] + [it[0][1]] + [it[0][0]] + it}
         .map{it -> it[0, 1, 2, 4]}
         .groupTuple(by: 0)
         .map{it -> it[0, 3]}
         .set{flag_data_ordered_for_report}
+  
+    flag_data_ordered_for_report.view()
+
+    align_annotation
+        .map{ it -> [it[0][2]] + [it[0][1]] + [it[0][0]] + it}
+        .map{it -> it[0, 1, 2, 4]}
+        .groupTuple(by: 0)
+        .map{it -> it[0, 3]}
+        .set{align_ordered_for_report}
+
+    align_ordered_for_report.view()
 
     // for the nanocomp output, we need the report group first
     // can achieve this by just deleting the first two elements (sample name and species)
@@ -231,6 +245,7 @@ workflow{
     annotation_ordered_for_report
         .join(nanocomp_htmls_ordered_for_report)
         .join(flag_data_ordered_for_report)
+        .join(align_ordered_for_report)
         .set{reportable_data}
 
     // get versions of all dependencies

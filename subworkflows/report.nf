@@ -14,7 +14,7 @@ process write_report {
     path sample_sheet
     path report_template
     path versions
-    tuple val(report_number), val(organism), val(sample_name), path(productive_only_annotation), path(nanocomp_htmls), path(flag_data)
+    tuple val(report_number), val(organism), val(sample_name), path(productive_only_annotation), path(nanocomp_htmls), path(flag_data), path(align_annotation)
 
     output:
     path('*.html'), emit: report

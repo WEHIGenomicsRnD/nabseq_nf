@@ -44,6 +44,7 @@ process post_consensus_annotation {
     //tuple val(meta), path('*_full_consensus_annotation.tsv'), emit: full_annotation
     tuple val(meta), path('*_productive_only_consensus_annotation.tsv'), emit: prod_annotation
     tuple val(meta), path('*_flag_data.tsv'), emit: flag_data
+    tuple val(meta), path('*_align_annotation.tsv'), emit: align_annotation
 
     script:
     // allow for a bunch of metadata (although the first element should be sample name)
@@ -66,7 +67,7 @@ process post_consensus_annotation {
     igblast_results <- vroom("${igblast_output}",
         col_select = c(
             sequence_id, sequence, locus, productive, complete_vdj, v_call,
-            d_call, j_call, c_call, cdr3_aa, v_sequence_start, c_sequence_end))
+            d_call, j_call, c_call, cdr3_aa, v_sequence_start, c_sequence_end,sequence_alignment_aa,fwr1_aa,cdr1_aa,fwr2_aa,cdr2_aa,fwr3_aa,fwr4_aa))
 
     if(nrow(igblast_results) == 0){
         stop("No IgBLAST results found")
@@ -105,6 +106,25 @@ process post_consensus_annotation {
             sequence = sequence[which.max(nchar(sequence))]) -> igblast_results_prod_only
 
     vroom_write(igblast_results_prod_only, "${prefix}_productive_only_consensus_annotation.tsv")
+
+
+    # just IGH,IGL for align ploting
+    igblast_results_with_counts %>%
+        filter(productive == TRUE) %>%
+        filter(locus %in% c("IGH","IGL")) %>%
+        filter(rowSums(is.na(.)) <= 2) %>%
+        select(-sequence_untrimmed) %>%
+        group_by(fwr1_aa,cdr1_aa,fwr2_aa,cdr2_aa,fwr3_aa,cdr3_aa,fwr4_aa) %>%
+        summarise(
+            group_id = paste0(group_id, collapse = ", "),
+            count = sum(as.numeric(count)),
+            locus = locus[1],
+            d_call = d_call[1],
+            sequence_alignment_aa = sequence_alignment_aa[which.max(nchar(sequence))]) -> igblast_results_align_only
+  
+    vroom_write(igblast_results_align_only, "${prefix}_align_annotation.tsv")
+
+
 
     # prepare flag data for report
     flag_data <- data.frame(
@@ -195,10 +215,11 @@ workflow annotation_grouping_post_consensus {
         // prepare output files
         annotated_sequences = post_consensus_annotation.out.prod_annotation
         flag_data = post_consensus_annotation.out.flag_data
-
+        align_annotation = post_consensus_annotation.out.align_annotation
 
     emit:
         annotated_sequences
         flag_data
+        align_annotation
 
 }

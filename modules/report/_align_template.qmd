@@ -1,0 +1,161 @@
+## `r TARGET_NAME`
+
+```{r}
+#| echo: false
+#| results: "asis"
+#| message: false
+#| warning: false
+
+
+if (!requireNamespace("base64enc", quietly = TRUE)) {
+  install.packages("base64enc", repos = "https://r-project.org")
+}
+
+original_align_data <- vroom(TARGET_FILE_PATH)
+text_to_display <- ""
+
+if(nrow(original_align_data) == 0){
+    text_to_display <- "No productive H and or L chains found for alignment graph"
+    table <- gt(original_align_data)
+} else {
+
+# 1. READ THE TSV FILE
+# Note: Ensure "sequences.tsv" is in the same directory as this .qmd file
+df_tsv <- read_delim(TARGET_FILE_PATH, delim="\t")
+
+line_width <- 40 # Wrap lines every 40 amino acids
+
+# 2. SEQUENCE & ANNOTATION PROCESSING FUNCTION
+generate_sequence_plot <- function(row_idx, row_data) {
+  
+  # Clean the master sequence string
+  full_seq <- gsub("[^A-Za-z-]", "", row_data$sequence_alignment_aa)
+  locus <- gsub("[^A-Za-z-]", "", row_data$locus)
+  # Step A: Dynamically Calculate Absolute Feature Coordinates
+  f1  <- nchar(gsub("[^A-Za-z-]", "", row_data$fwr1_aa))
+  c1  <- nchar(gsub("[^A-Za-z-]", "", row_data$cdr1_aa))
+  f2  <- nchar(gsub("[^A-Za-z-]", "", row_data$fwr2_aa))
+  c2  <- nchar(gsub("[^A-Za-z-]", "", row_data$cdr2_aa))
+  f3  <- nchar(gsub("[^A-Za-z-]", "", row_data$fwr3_aa))
+  c3  <- nchar(gsub("[^A-Za-z-]", "", row_data$cdr3_aa))
+  f4  <- nchar(gsub("[^A-Za-z-]", "", row_data$fwr4_aa))
+  
+  df_annotations <- data.frame(
+    label = c("FR1", "CDR1", "FR2", "CDR2", "FR3", "CDR3", "FR4"),
+    start = c(1, f1+1, f1+c1+1, f1+c1+f2+1, f1+c1+f2+c2+1, f1+c1+f2+c2+f3+1, f1+c1+f2+c2+f3+c3+1),
+    end   = c(f1, f1+c1, f1+c1+f2, f1+c1+f2+c2, f1+c1+f2+c2+f3, f1+c1+f2+c2+f3+c3, f1+c1+f2+c2+f3+c3+f4)
+  )
+  
+  # Step B: Coordinate Grid Generation
+  chars <- strsplit(full_seq, "")[[1]] # Using [[1]] standardises list flattening
+  df_chars <- data.frame(char_idx = 1:length(chars), char = chars) %>%
+    mutate(
+      raw_row = ceiling(char_idx / line_width),
+      x = (char_idx - 1) %% line_width + 1
+    )
+  
+  total_rows <- max(df_chars$raw_row)
+  df_chars <- df_chars %>% mutate(row = total_rows - raw_row + 1)
+  
+  # Step C: Text Character Bolding Logic (CDR1, CDR2, CDR3)
+  cdr1_row <- df_annotations %>% filter(label == "CDR1")
+  cdr2_row <- df_annotations %>% filter(label == "CDR2")
+  cdr3_row <- df_annotations %>% filter(label == "CDR3")
+  
+  cdr1_range <- if(nrow(cdr1_row) > 0) cdr1_row$start:cdr1_row$end else integer(0)
+  cdr2_range <- if(nrow(cdr2_row) > 0) cdr2_row$start:cdr2_row$end else integer(0)
+  cdr3_range <- if(nrow(cdr3_row) > 0) cdr3_row$start:cdr3_row$end else integer(0)
+  
+  target_bold_indices <- c(cdr1_range, cdr2_range, cdr3_range)
+  
+  df_chars <- df_chars %>%
+    mutate(weight = ifelse(char_idx %in% target_bold_indices, "bold", "plain"))
+  
+  # Step D: Construct Safe Wrapping Annotation Lines & Dynamic Widths
+  df_lines <- df_annotations %>%
+    group_by(label) %>%
+    reframe(char_idx = start:end) %>%
+    mutate(
+      raw_row = ceiling(char_idx / line_width),
+      x = (char_idx - 1) %% line_width + 1
+    ) %>%
+    group_by(label, raw_row) %>%
+    summarize(
+      x_start = min(x),
+      x_end = max(x),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      row = total_rows - raw_row + 1,
+      line_thickness = ifelse(label %in% c("CDR1", "CDR2", "CDR3"), 1.0, 0.6)
+    )
+  
+  # Step E: Render the Layout Plot
+  p <- ggplot() +
+    geom_text(data = df_chars, aes(x = x, y = row, label = char, fontface = weight), 
+              family = "mono", size = 4.5) +
+    
+    geom_segment(data = df_lines, aes(x = x_start - 0.4, xend = x_end + 0.4, 
+                                      y = row + 0.18, yend = row + 0.18,
+                                      linewidth = line_thickness), color = "black") +
+    
+    geom_text(data = df_lines, aes(x = (x_start + x_end) / 2, y = row + 0.32, label = label), 
+              family = "mono", fontface = "bold", size = 3.5, vjust = 0) +
+    
+    scale_linewidth_identity() + 
+    
+    labs(title = paste("Protein sequences annotated to highlight framework regions (FRs) and complementary determining regions (CDRs) for: ",locus)) +
+
+    #coord_fixed(ratio = 0.5) + 
+    xlim(0, line_width + 1) + 
+    ylim(0.7, total_rows + 0.5) +
+    theme_void() +
+#    theme(plot.title = element_text(family = "mono", face = "bold", size = 12, hjust = 0.05))
+    theme(
+    plot.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"),
+
+    plot.title = element_text(
+      family = "PT Sans",         # Matches your monospace alignment style
+      face = "plain",         # Options: "plain", "italic", "bold", "bold.italic"
+      size = 9,                # Reduced from default size (adjust as needed)
+      lineheight = 1.1,        # Controls the vertical gap between the two title lines
+      hjust = 0.05,            # Slight horizontal indentation from the left edge
+      vjust = 1,               # Aligns the text context cleanly to the top
+      margin = margin(b = 8)   # Adds a tight 8-pixel buffer below the title text
+    )
+
+
+    )
+  
+  return(p)
+}
+
+# 3. EXECUTION LOOP
+for(i in 1:nrow(df_tsv)) {
+  plot_out <- generate_sequence_plot(row_idx = i, row_data = df_tsv[i, ])
+
+  plot_out <- plot_out + 
+  ggplot2::theme(
+    plot.margin = ggplot2::margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"),
+    plot.title = ggplot2::element_text(margin = ggplot2::margin(b = 2, t = 0)),
+    plot.subtitle = ggplot2::element_text(margin = ggplot2::margin(b = 0, t = 0))
+  )
+
+  tmp_png <- tempfile(fileext = ".png")
+  ggplot2::ggsave(tmp_png, plot = plot_out, width = 7, height = 2, dpi = 150)
+
+  img_base64 <- base64enc::dataURI(file = tmp_png, mime = "image/png") 
+
+   cat("\n")
+#  cat(sprintf('<img src="%s" style="max-width:100%%; height:auto; margin-bottom:20px;" />', img_base64))
+  cat(sprintf('<img src="%s" style="max-width:100%%; height:auto; margin-top:0px; margin-bottom:2px; display:block;" />', img_base64))
+
+#  print(plot_out)
+  cat("\n")
+
+  unlink(tmp_png)
+}
+
+}
+
+```
