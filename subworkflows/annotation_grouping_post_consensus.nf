@@ -111,7 +111,7 @@ process post_consensus_annotation {
     # just IGH,IGL for align ploting
     igblast_results_with_counts %>%
         filter(productive == TRUE) %>%
-        filter(locus %in% c("IGH","IGL")) %>%
+        filter(locus %in% c("IGH","IGK")) %>%
         filter(rowSums(is.na(.)) <= 2) %>%
         select(-sequence_untrimmed) %>%
         group_by(fwr1_aa,cdr1_aa,fwr2_aa,cdr2_aa,fwr3_aa,cdr3_aa,fwr4_aa) %>%
